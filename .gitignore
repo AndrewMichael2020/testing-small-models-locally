@@ -5,6 +5,9 @@ artifacts/*.md
 artifacts/*.json
 artifacts/*.llamafile
 
+# But keep example files
+!artifacts/example_*
+
 # Model files
 *.gguf
 *.bin
