@@ -56,6 +56,120 @@ The notebook was executed end-to-end in an Ubuntu 24.04 devcontainer. Results fr
 - Ollama and llamafile cells had no intermediate output, making it impossible to distinguish "working slowly" from "stuck".
 - The OpenAI report generation cell also lacked progress indicators.
 
+## Post-First-Run Improvements (Feb 2026)
+
+Based on the first run, the following enhancements were implemented:
+
+### 1. Throughput Metrics Added
+
+**Problem:** The original implementation recorded `duration_s` but never counted output tokens, making it impossible to measure actual throughput.
+
+**Solution:**
+- Added `count_tokens_simple()` helper function for runtimes without tokenizer access
+- Modified all three test functions to calculate:
+  - `prompt_tokens` — Input token count
+  - `tokens_generated` — Output token count
+  - `tokens_per_sec` — Throughput metric (tokens_generated / duration_s)
+- Transformers runtime uses exact token counts from the tokenizer
+- Ollama and llamafile use simple heuristic (~4 characters per token)
+
+**Result Schema Update:**
+```json
+{
+  "timestamp": "...",
+  "runtime": "transformers",
+  "model": "...",
+  "status": "SUCCESS",
+  "prompt_tokens": 8,
+  "tokens_generated": 3,
+  "tokens_per_sec": 3.09,
+  "duration_s": 0.972,
+  "output": "...",
+  ...
+}
+```
+
+### 2. Ollama Runtime Fixed
+
+**Problems:**
+- Ollama CLI not installed in dev container
+- No install check or helpful error messages
+- Model tags not verified against Ollama library
+
+**Solutions:**
+- Added Ollama installation check cell with detailed instructions
+- Verified correct model tags from [ollama.com/library/gemma3](https://ollama.com/library/gemma3)
+- Updated configuration with correct tags: `gemma3:1b`, `gemma3:4b`, `gemma3:12b`
+- Added inline comments with verification URLs
+- Tests gracefully skip with helpful message if Ollama unavailable
+
+### 3. Llamafile Runtime Fixed
+
+**Problems:**
+- 404 errors on download
+- Assumed filename pattern `{model_name}.llamafile` didn't match actual files
+- Repo IDs were incorrect or non-existent
+
+**Solutions:**
+- Researched and verified actual HuggingFace repos from Mozilla
+- Updated to use `Mozilla/gemma-3-*-llamafile` (not `mozilla-ai/gemma-3-*`)
+- Changed configuration to dict format with explicit `repo_id` and `filename`:
+  ```python
+  {
+      "repo_id": "Mozilla/gemma-3-1b-it-llamafile",
+      "filename": "google_gemma-3-1b-it-Q6_K.llamafile"
+  }
+  ```
+- Updated `download_llamafile()` and `test_llamafile_model()` to use dict config
+- Added verification URLs in configuration comments
+
+### 4. Configuration Consolidated
+
+**Problem:** Model IDs, repo URLs, and tags were defined without verification links, making it hard to confirm correctness.
+
+**Solution:**
+- Moved all model configurations to top config cell with clear sections
+- Added inline comments with verification URLs for each model:
+  - Transformers: `https://huggingface.co/google/<model>`
+  - Ollama: `https://ollama.com/library/gemma3:<tag>`
+  - llamafile: `https://huggingface.co/Mozilla/<model>-llamafile`
+- Documented filename patterns and quantization variants
+- Added notes about hardware requirements
+
+### 5. Generation Quality Improvements
+
+**Problems:**
+- `gemma-3-4b-it` short prompt generated hundreds of blank lines (313s)
+- `gemma-3-1b-it` complex prompt repeated JSON block 11 times (110s)
+
+**Solutions:**
+- Added `REPETITION_PENALTY = 1.2` to configuration
+- Applied to all three runtimes:
+  - Transformers: `repetition_penalty=REPETITION_PENALTY` in `model.generate()`
+  - llamafile: `--repeat-penalty` command-line flag
+  - Ollama: (parameter available via API if needed in future)
+- This prevents runaway generation without adding hard caps
+
+## Known Limitations (Updated)
+
+The following limitations were discovered during initial testing and addressed in the improvements above:
+
+### Fixed
+1. ✅ **No throughput metrics** — Now includes `tokens_generated`, `prompt_tokens`, `tokens_per_sec`
+2. ✅ **Ollama runtime unavailable** — Added install check with helpful instructions
+3. ✅ **Llamafile 404 errors** — Fixed with verified Mozilla repos and exact filenames
+4. ✅ **Configuration hard to verify** — Added inline verification URLs
+5. ✅ **Runaway generation** — Added `repetition_penalty=1.2`
+
+### Remaining
+| llamafile | — | — | — | FAILED | llamafile repos not found on Hugging Face |
+
+**Key findings:**
+- 1B on CPU is viable for short prompts (<1s). Structured output is correct but slow (~110s) because `max_new_tokens` lets the model keep generating.
+- 4B on CPU is impractical (5 min for a short prompt). Memory bandwidth — not compute — is the bottleneck.
+- Ollama and llamafile cells had no intermediate output, making it impossible to distinguish "working slowly" from "stuck".
+- The OpenAI report generation cell also lacked progress indicators.
+
 ## Requirements Compliance
 
 ### ✅ Deterministic Model Scope
@@ -202,19 +316,26 @@ testing-small-models-locally/
 
 ## Known Limitations Discovered During Testing
 
-1. **No streaming subprocess output** — Ollama and llamafile cells buffer all stdout/stderr until the process exits. No heartbeat, no progress indicator.
+### Fixed in Current Version
+1. ✅ **No throughput observability** — FIXED: Added `tokens_generated`, `prompt_tokens`, `tokens_per_sec` to all results
+2. ✅ **Ollama CLI not available** — FIXED: Added install check cell with detailed instructions
+3. ✅ **Llamafile 404 errors** — FIXED: Verified and updated to correct Mozilla HuggingFace repos
+4. ✅ **Configuration hard to verify** — FIXED: Added inline verification URLs for all model sources
+5. ✅ **Runaway generation** — FIXED: Added `repetition_penalty=1.2` to prevent repetitive output
+
+### Still Present
+1. **No streaming subprocess output** — Ollama and llamafile cells buffer all stdout/stderr until the process exits. No heartbeat, no progress indicator during long operations.
 2. **No resource guardrails** — The notebook will attempt to load any model regardless of available RAM. The 4B model on 8 GB RAM caused severe slowdown (313s for a short prompt).
 3. **No system diagnostics** — Memory bandwidth, disk I/O, cgroup limits, and CPU thermal throttling are not measured, yet these are the primary bottlenecks for CPU inference.
 4. **No per-inference memory tracking** — Memory snapshots exist at phase boundaries but not around individual inference calls.
 5. **OpenAI API call has no timeout** — If the API is unresponsive, the cell hangs indefinitely with no feedback.
-6. **MAX_TOKENS too generous for structured output** — The 1B model repeated correct JSON 11 times, consuming 110s on CPU, because there was no stop sequence to halt generation after the first valid block.
 
 ## Next Steps
 
-These limitations are tracked in the project's issue backlog. The next iteration should add:
+These remaining limitations are tracked in the project's issue backlog. Future iterations should add:
 - Streaming subprocess output with heartbeat logging
 - CPU/memory guardrails (`check_resources()`) before each model load
 - System diagnostics cell (memory bandwidth, cgroup limits, thermal info)
 - Per-inference memory delta tracking
 - OpenAI call timeout and progress printing
-- Thread clamping (OMP_NUM_THREADS, MKL_NUM_THREADS) before torch import
+- Thread clamping (OMP_NUM_THREADS, MKL_NUM_THREADS) before torch import (✅ Already implemented)

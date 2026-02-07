@@ -57,12 +57,80 @@ When prompted, provide:
 
 ---
 
-## Runtimes
+## Runtime Prerequisites
+
+Each runtime has different installation requirements. You can enable/disable each runtime independently in the notebook configuration.
+
+### Transformers (Hugging Face)
+
+**Required:**
+- Python 3.10+
+- PyTorch 2.0+
+- transformers library 4.50+
+
+**Install:**
+```bash
+pip install -r requirements.txt
+```
+
+**No additional setup needed** — models download automatically from Hugging Face Hub.
+
+### Ollama
+
+**Required:**
+- Ollama CLI installed and running as a daemon
+
+**Install:**
+```bash
+# Option 1: Install script (Linux/macOS)
+curl -fsSL https://ollama.com/install.sh | sh
+
+# Option 2: Download from website
+# Visit https://ollama.com/download for Windows/macOS installers
+```
+
+**Start the Ollama server:**
+```bash
+ollama serve
+# Leave this running in a separate terminal
+```
+
+**Verify installation:**
+```bash
+ollama list
+```
+
+If the Ollama CLI is not found, the notebook will print installation instructions and skip Ollama tests.
+
+**Model Tags:**
+- Ollama uses simple tags like `gemma3:1b`, not HuggingFace repo IDs
+- Verify available tags at [ollama.com/library/gemma3](https://ollama.com/library/gemma3)
+
+### llamafile
+
+**Required:**
+- `huggingface_hub` Python library (included in `requirements.txt`)
+
+**No additional installation needed** — llamafiles are single-file executables that download automatically from HuggingFace.
+
+**How it works:**
+1. Notebook downloads `.llamafile` from Mozilla's HuggingFace repos
+2. Makes it executable (`chmod +x`)
+3. Runs as a subprocess with CLI flags
+
+**Verified llamafile sources:**
+- [Mozilla/gemma-3-1b-it-llamafile](https://huggingface.co/Mozilla/gemma-3-1b-it-llamafile)
+- [Mozilla/gemma-3-4b-it-llamafile](https://huggingface.co/Mozilla/gemma-3-4b-it-llamafile)
+- [Mozilla/gemma-3-12b-it-llamafile](https://huggingface.co/Mozilla/gemma-3-12b-it-llamafile)
+
+---
+
+## Runtimes Summary
 
 | Runtime | How It Runs | Install Requirement |
 |---|---|---|
 | **Transformers** | In-process Python via Hugging Face `transformers` + `torch` | `pip install -r requirements.txt` |
-| **Ollama** | External daemon; notebook shells out via `ollama pull` / `ollama run` | [ollama.ai](https://ollama.ai) installed + `ollama serve` running |
+| **Ollama** | External daemon; notebook shells out via `ollama pull` / `ollama run` | [ollama.com](https://ollama.com/download) installed + `ollama serve` running |
 | **llamafile** | Single-binary executable downloaded from Hugging Face, run as a subprocess | None beyond `huggingface_hub` (included in requirements) |
 
 Each runtime is independently toggled via `RUN_TRANSFORMERS`, `RUN_OLLAMA`, `RUN_LLAMAFILE` in the Configuration cell.
@@ -75,9 +143,9 @@ Each runtime is independently toggled via `RUN_TRANSFORMERS`, `RUN_OLLAMA`, `RUN
 
 | Size | Transformers ID | Ollama Tag | llamafile Repo |
 |---|---|---|---|
-| 1B | `google/gemma-3-1b-it` | `gemma3:1b` | `mozilla-ai/gemma-3-1b-it-llamafile` |
-| 4B | `google/gemma-3-4b-it` | `gemma3:4b` | `mozilla-ai/gemma-3-4b-it-llamafile` |
-| 12B | `google/gemma-3-12b-it` | `gemma3:12b` | `mozilla-ai/gemma-3-12b-it-llamafile` |
+| 1B | `google/gemma-3-1b-it` | `gemma3:1b` | `Mozilla/gemma-3-1b-it-llamafile` |
+| 4B | `google/gemma-3-4b-it` | `gemma3:4b` | `Mozilla/gemma-3-4b-it-llamafile` |
+| 12B | `google/gemma-3-12b-it` | `gemma3:12b` | `Mozilla/gemma-3-12b-it-llamafile` |
 
 ### Gemma 2 (Fallback)
 
@@ -86,7 +154,12 @@ Each runtime is independently toggled via `RUN_TRANSFORMERS`, `RUN_OLLAMA`, `RUN
 | 2B | `google/gemma-2-2b-it` | `gemma2:2b` | `mozilla-ai/gemma-2-2b-it-llamafile` |
 | 9B | `google/gemma-2-9b-it` | `gemma2:9b` | — |
 
-12B and larger models are commented out by default; uncomment them if your hardware can support them.
+**Note:** 12B and larger models are commented out by default in the notebook configuration. Uncomment them only if your hardware has sufficient RAM (16GB+ recommended).
+
+**Verification Links:**
+- Transformers models: [huggingface.co/google](https://huggingface.co/google)
+- Ollama tags: [ollama.com/library/gemma3](https://ollama.com/library/gemma3), [ollama.com/library/gemma2](https://ollama.com/library/gemma2)
+- llamafiles: [huggingface.co/Mozilla](https://huggingface.co/Mozilla) (Gemma 3), [huggingface.co/mozilla-ai](https://huggingface.co/mozilla-ai) (Gemma 2)
 
 ---
 
@@ -118,6 +191,7 @@ All tunable parameters live in **one cell** (Configuration Section, cell 5). Not
 |---|---|---|
 | `MAX_TOKENS` | `512` | Max new tokens per generation |
 | `TEMPERATURE` | `0.7` | Sampling temperature |
+| `REPETITION_PENALTY` | `1.2` | Prevents repetitive output (1.0 = no penalty, higher = more penalty) |
 | `SEED` | `42` | For reproducibility |
 
 ### Output Paths
@@ -145,6 +219,21 @@ All tunable parameters live in **one cell** (Configuration Section, cell 5). Not
   "prompt_text": "What is the capital of France?",
   "output": "Paris",
   "duration_s": 0.972,
+  "device": "cpu",
+  "prompt_tokens": 8,
+  "tokens_generated": 3,
+  "tokens_per_sec": 3.09,
+  "error": ""
+}
+```
+
+**Throughput Metrics (new in this version):**
+- `prompt_tokens` — Number of input tokens (calculated from prompt)
+- `tokens_generated` — Number of output tokens generated
+- `tokens_per_sec` — Throughput metric (tokens_generated / duration_s)
+
+For **Transformers** runtime, token counts are exact (from tokenizer).
+For **Ollama** and **llamafile**, token counts are estimated using a simple heuristic (~4 characters per token).
   "device": "cpu",
   "error": ""
 }
