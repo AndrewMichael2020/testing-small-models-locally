@@ -1,3 +1,5 @@
+# pip install -r requirements.txt
+
 # Core dependencies for Gemma runtime smoke-test notebook
 jupyter>=1.0.0
 notebook>=7.0.0
