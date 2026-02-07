@@ -2,7 +2,7 @@
 
 ## Gemma Runtime Smoke-Test Harness
 
-This document summarizes the implementation of the Gemma runtime smoke-test harness as specified in the issue.
+This document summarizes the implementation of the Gemma runtime smoke-test harness and tracks its evolution through actual testing.
 
 ## What Was Built
 
@@ -36,6 +36,25 @@ This document summarizes the implementation of the Gemma runtime smoke-test harn
 5. **Git Configuration**
    - `.gitignore` properly configured to exclude artifacts but include examples
    - Artifacts directory with `.gitkeep` for git tracking
+
+## First Run Results (Feb 7, 2026 — CPU-only devcontainer)
+
+The notebook was executed end-to-end in an Ubuntu 24.04 devcontainer. Results from `notebooks/artifacts/results.jsonl`:
+
+| Runtime | Model | Prompt | Duration | Status | Observation |
+|---|---|---|---|---|---|
+| Transformers | gemma-3-1b-it | short | 0.97s | SUCCESS | Correct answer ("Paris") |
+| Transformers | gemma-3-1b-it | complex | 110.4s | SUCCESS | Correct JSON but repeated 11× — MAX_TOKENS=512 too generous |
+| Transformers | gemma-3-4b-it | short | 313.6s | SUCCESS | 5+ min; output degenerated into trivia + blank lines |
+| Transformers | gemma-3-4b-it | complex | 29.8s | SUCCESS | Correct JSON, clean output |
+| Ollama | — | — | — | SKIPPED | Ollama not installed in devcontainer |
+| llamafile | — | — | — | FAILED | llamafile repos not found on Hugging Face |
+
+**Key findings:**
+- 1B on CPU is viable for short prompts (<1s). Structured output is correct but slow (~110s) because `max_new_tokens` lets the model keep generating.
+- 4B on CPU is impractical (5 min for a short prompt). Memory bandwidth — not compute — is the bottleneck.
+- Ollama and llamafile cells had no intermediate output, making it impossible to distinguish "working slowly" from "stuck".
+- The OpenAI report generation cell also lacked progress indicators.
 
 ## Requirements Compliance
 
@@ -138,108 +157,64 @@ This document summarizes the implementation of the Gemma runtime smoke-test harn
 ### Design Decisions
 
 1. **Runner Abstraction**: Used `create_result_record()` function to ensure consistent result schema across all runtimes
-
 2. **Skip with Reason**: All failures include error messages; runtime unavailability results in SKIPPED status with clear reason
-
 3. **Minimal Dependencies**: Core dependencies only, no over-engineering
-
 4. **Memory Management**: Explicit `clear_memory()` calls between tests with gc.collect() and torch.cuda.empty_cache()
-
 5. **Error Handling**: Try-except blocks at multiple levels with detailed error messages
-
 6. **Configurability**: All magic numbers are variables at the top
 
 ### Testing Performed
 
 1. **Structure Validation**: All 7 validation tests pass
-   - Notebook structure
-   - Model lists
-   - Timeout configuration
-   - Prompts
-   - Output paths
-   - Artifacts directory
-   - Requirements
+   - Notebook structure, model lists, timeout configuration, prompts, output paths, artifacts directory, requirements
 
 2. **Syntax Validation**: All 10 code cells have valid Python syntax
 
-3. **Example Generation**: Created realistic example outputs showing:
-   - Successful runs (Transformers, Ollama)
-   - Failed runs (gating, model not found)
-   - Skipped runs (runtime unavailable)
+3. **Live Run**: Full notebook execution on CPU-only devcontainer (Ubuntu 24.04, 8 GB RAM)
+   - 4 of 4 Transformers tests completed (2 models × 2 prompts)
+   - Ollama: skipped (not installed)
+   - llamafile: failed (repos not found)
 
-## Files Created
+4. **Example Generation**: Created realistic example outputs showing successful, failed, and skipped runs
+
+## Files
 
 ```
-.
-├── .gitignore                           # Exclude artifacts but keep examples
-├── README.md                             # Main project README
+testing-small-models-locally/
+├── README.md                             # Single comprehensive project README
+├── IMPLEMENTATION.md                     # ← This file
 ├── requirements.txt                      # Python dependencies
-├── validate_notebook.py                  # Validation script
-├── generate_examples.py                  # Example generator
+├── LICENSE                               # MIT
+├── validate_notebook.py                  # Notebook structure validator (7 tests)
+├── generate_examples.py                  # Example output generator
+├── .gitignore                            # Excludes artifacts, keeps examples
 ├── notebooks/
-│   ├── README.md                        # Notebook usage guide
-│   └── gemma_runtime_smoketest.ipynb    # Main notebook (22 cells)
+│   ├── gemma_runtime_smoketest.ipynb      # Main notebook (22 cells)
+│   └── artifacts/
+│       └── results.jsonl                  # Actual run results
 └── artifacts/
-    ├── .gitkeep                          # Keep directory in git
-    ├── README.md                         # Output format documentation
-    ├── example_results.jsonl             # Example JSONL output
-    ├── example_results.csv               # Example CSV output
-    ├── example_report.md                 # Example markdown report
+    ├── .gitkeep                           # Keep directory in git
+    ├── example_results.jsonl              # Example JSONL output
+    ├── example_results.csv                # Example CSV output
+    ├── example_report.md                  # Example markdown report
     └── example_report.json               # Example JSON report
 ```
 
-## Usage
+## Known Limitations Discovered During Testing
 
-### Quick Start
+1. **No streaming subprocess output** — Ollama and llamafile cells buffer all stdout/stderr until the process exits. No heartbeat, no progress indicator.
+2. **No resource guardrails** — The notebook will attempt to load any model regardless of available RAM. The 4B model on 8 GB RAM caused severe slowdown (313s for a short prompt).
+3. **No system diagnostics** — Memory bandwidth, disk I/O, cgroup limits, and CPU thermal throttling are not measured, yet these are the primary bottlenecks for CPU inference.
+4. **No per-inference memory tracking** — Memory snapshots exist at phase boundaries but not around individual inference calls.
+5. **OpenAI API call has no timeout** — If the API is unresponsive, the cell hangs indefinitely with no feedback.
+6. **MAX_TOKENS too generous for structured output** — The 1B model repeated correct JSON 11 times, consuming 110s on CPU, because there was no stop sequence to halt generation after the first valid block.
 
-```bash
-# Install dependencies
-pip install -r requirements.txt
+## Next Steps
 
-# Launch notebook
-jupyter notebook notebooks/gemma_runtime_smoketest.ipynb
-
-# Run cells sequentially
-# Enter HF_TOKEN when prompted
-# Enter OPENAI_API_KEY when prompted
-
-# Check results
-ls -la artifacts/
-```
-
-### Expected Runtime
-
-- Download time: 5-30 minutes (depending on model size and network)
-- Per-model test time: 1-5 minutes (depending on hardware)
-- Total time: 30-60 minutes for full suite
-
-## Next Steps for Users
-
-1. **Install Ollama** (optional): Download from ollama.ai and start server
-2. **Get Tokens**: 
-   - HF token from huggingface.co/settings/tokens
-   - OpenAI API key from platform.openai.com
-3. **Run Notebook**: Follow prompts and wait for completion
-4. **Review Results**: Check artifacts/ directory
-5. **Iterate**: Adjust configuration based on your hardware
-
-## Known Limitations
-
-1. **Gemma 3 Availability**: Some Gemma 3 models may be gated or not yet released
-2. **llamafile Availability**: Mozilla AI llamafile repos may not have all models yet
-3. **Resource Requirements**: 12b models require significant RAM/VRAM
-4. **Timeout Tuning**: May need adjustment based on hardware
-5. **No Parallel Execution**: Tests run sequentially (by design)
-
-## Success Metrics
-
-- ✅ All acceptance criteria met
-- ✅ 7/7 validation tests pass
-- ✅ Comprehensive documentation
-- ✅ Example outputs provided
-- ✅ Clean git history
-- ✅ Minimal, focused implementation
-
-## Conclusion
-
-The Gemma runtime smoke-test harness has been successfully implemented according to all specifications. The notebook is production-ready and can be run on various hardware configurations to test Gemma model runnability across three different runtimes with comprehensive logging, error handling, and automated report generation.
+These limitations are tracked in the project's issue backlog. The next iteration should add:
+- Streaming subprocess output with heartbeat logging
+- CPU/memory guardrails (`check_resources()`) before each model load
+- System diagnostics cell (memory bandwidth, cgroup limits, thermal info)
+- Per-inference memory delta tracking
+- OpenAI call timeout and progress printing
+- Thread clamping (OMP_NUM_THREADS, MKL_NUM_THREADS) before torch import
