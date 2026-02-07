@@ -234,10 +234,6 @@ All tunable parameters live in **one cell** (Configuration Section, cell 5). Not
 
 For **Transformers** runtime, token counts are exact (from tokenizer).
 For **Ollama** and **llamafile**, token counts are estimated using a simple heuristic (~4 characters per token).
-  "device": "cpu",
-  "error": ""
-}
-```
 
 **Status values:**
 - `SUCCESS` — Model loaded and generated output.
