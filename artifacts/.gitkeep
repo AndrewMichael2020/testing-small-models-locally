@@ -1,0 +1,2 @@
+# This file keeps the artifacts directory in git
+# Actual artifact files (*.jsonl, *.csv, *.md, *.json) are excluded via .gitignore
