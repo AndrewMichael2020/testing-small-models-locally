@@ -7,6 +7,15 @@ artifacts/*.llamafile
 
 # But keep example files
 !artifacts/example_*
+artifacts/ 
+.venv/*
+
+main.log
+
+# Environment secrets
+.env
+.env.local
+.env.*.local
 
 # Model files
 *.gguf

@@ -1,3 +1,11 @@
+# # Activate
+# source .venv/bin/activate
+
+# # Verify
+# echo "$VIRTUAL_ENV"
+# which python
+# python -V
+
 # pip install -r requirements.txt
 
 # Core dependencies for Gemma runtime smoke-test notebook
@@ -5,8 +13,10 @@ jupyter>=1.0.0
 notebook>=7.0.0
 ipykernel>=6.25.0
 
+ipykernel>=6.25.0
+
 # Transformers runtime
-transformers>=4.50.0
+transformers>=4.55.0
 torch>=2.0.0
 accelerate>=0.20.0
 huggingface_hub>=0.20.0
@@ -18,6 +28,9 @@ pandas>=2.0.0
 
 # OpenAI API for report generation
 openai>=1.0.0
+
+# Environment variable management
+python-dotenv>=1.0.0
 
 # Additional utilities
 tqdm>=4.65.0
